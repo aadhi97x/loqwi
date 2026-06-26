@@ -2,6 +2,7 @@
 
 @theme {
   --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-serif: 'Newsreader', 'Noto Serif Devanagari', Georgia, serif;
   --font-devanagari: 'Noto Sans Devanagari', 'Mangal', sans-serif;
 
   --color-brand-50: #eef2ff;
