@@ -43,6 +43,17 @@ Teacher's voice ──▶ Web Speech API (STT, in-browser) ──▶ React state
 | UI components | Hand-built, Tailwind/Radix-style primitives (`Button`, `Dialog`, `Switch`, toasts) in the visual language of shadcn/ui — the same system 21st.dev components are built on — plus `lucide-react` icons and `framer-motion` for motion | Polished, accessible, consistent design without a heavy dependency tree |
 | Backend | Node.js + Express, zero extra runtime deps besides `express` | Holds the Gemini key server-side; serves the built frontend in production so there's one deployable process |
 
+## Deploying to Vercel
+
+The repo includes `vercel.json` plus `api/assistant.js` and `api/health.js` — Vercel auto-detects anything under `/api` as serverless functions, separate from the always-on `server/` Express app used for local dev or Render/Railway-style hosts.
+
+1. Push this repo to GitHub, then import it in Vercel.
+2. Project Settings → keep **Root Directory** as the repo root (not `web/`) so `/api` is picked up.
+3. Project Settings → **Environment Variables** → add `GEMINI_API_KEY` (and optionally `GEMINI_MODEL`). Do **not** put it in any committed file.
+4. Deploy. Vercel runs the `buildCommand` from `vercel.json` (`cd web && npm install && npm run build`) and serves `web/dist` as static, with `/api/assistant` and `/api/health` as functions.
+
+Note: the simple in-memory rate limiter in `server/server.js` doesn't carry over to Vercel's stateless functions (each invocation/instance has its own memory) — fine for a small classroom demo, but worth knowing if you plan to share the URL widely.
+
 ## Local setup
 
 Requires Node.js 20+.
@@ -112,6 +123,6 @@ Command **routing** (which of the four modes a teacher meant) is handled two way
 - [x] STT/TTS audio pipeline
 - [x] Web interface optimized for smart board (large-text "Smart Board" mode) and mobile (responsive layout)
 - [x] Server-side API key handling (Gemini key never reaches the browser)
-- [ ] Live URL — needs deploying `server/` (which serves the built `web/`) to a host with `GEMINI_API_KEY` set as an environment variable (Render, Railway, Fly.io, etc.)
+- [ ] Live URL — ready to deploy on Vercel (see "Deploying to Vercel" above) or any Node host that runs `server/` with `GEMINI_API_KEY` set as an environment variable
 - [ ] Public GitHub repo
 - [ ] Video walkthrough (≤3 min)

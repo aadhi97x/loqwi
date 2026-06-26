@@ -1,0 +1,6 @@
+{
+  "name": "loqwi",
+  "private": true,
+  "type": "module",
+  "description": "Loqwi — Voice AI Teaching Assistant. See README.md for setup; this root package.json exists only so /api/*.js (Vercel serverless functions) resolve as ESM."
+}
