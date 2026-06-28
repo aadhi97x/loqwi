@@ -20,6 +20,52 @@
   --color-surface-700: #1a1f30;
   --color-surface-600: #262c41;
   --color-surface-500: #353c54;
+
+  /* Semantic text tokens — components use text-ink-* instead of literal
+     slate/white so the Daylight theme below can flip every text color at
+     once via the CSS variable cascade, without touching component markup. */
+  --color-ink-900: #f8fafc;
+  --color-ink-800: #e2e8f0;
+  --color-ink-700: #cbd5e1;
+  --color-ink-600: #94a3b8;
+  --color-ink-500: #64748b;
+}
+
+:root {
+  --accent-ink: #a5b4fc;
+  --accent-ink-soft: #e0e7ff;
+  --good-ink: #6ee7b7;
+  --bad-ink: #fda4af;
+  --warn-ink: #fcd34d;
+  --ambient-opacity-1: 0.18;
+  --ambient-opacity-2: 0.14;
+}
+
+/* Daylight theme — for bright classrooms/projectors where a dark UI loses
+   contrast against window light. Flips surfaces light-on-dark→dark-on-light
+   and re-tunes the accent so it stays readable against a light background,
+   all via CSS variable overrides (no component changes needed). */
+[data-theme='daylight'] {
+  --color-surface-950: #eef1f6;
+  --color-surface-900: #ffffff;
+  --color-surface-800: #ffffff;
+  --color-surface-700: #e7eaf1;
+  --color-surface-600: #d4d9e3;
+  --color-surface-500: #aab1c2;
+
+  --color-ink-900: #0f172a;
+  --color-ink-800: #1e293b;
+  --color-ink-700: #334155;
+  --color-ink-600: #51596b;
+  --color-ink-500: #6b7280;
+
+  --accent-ink: #4338ca;
+  --accent-ink-soft: #3730a3;
+  --good-ink: #047857;
+  --bad-ink: #be123c;
+  --warn-ink: #92400e;
+  --ambient-opacity-1: 0.07;
+  --ambient-opacity-2: 0.05;
 }
 
 html {
@@ -31,7 +77,10 @@ body {
   margin: 0;
   font-family: var(--font-sans);
   background: var(--color-surface-950);
-  color: #eef1fb;
+  color: var(--color-ink-900);
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease;
 }
 
 ::selection {
@@ -57,4 +106,51 @@ body {
 
 .animate-mic-pulse {
   animation: mic-pulse 1.6s infinite;
+}
+
+/* Animated conic-gradient border (GradientBorder component). */
+@property --gradient-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes spin-gradient {
+  to {
+    --gradient-angle: 360deg;
+  }
+}
+
+.animate-spin-slow {
+  animation: spin-gradient 4s linear infinite;
+}
+
+/* Ambient background blobs (AmbientBackground component) — slow drifting
+   glow, kept very low-opacity in Daylight so it never fights legibility. */
+@keyframes drift-one {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(4%, 6%) scale(1.08);
+  }
+}
+
+@keyframes drift-two {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(-5%, -4%) scale(1.1);
+  }
+}
+
+.animate-drift-one {
+  animation: drift-one 18s ease-in-out infinite;
+}
+
+.animate-drift-two {
+  animation: drift-two 22s ease-in-out infinite;
 }

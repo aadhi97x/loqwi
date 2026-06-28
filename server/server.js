@@ -2,6 +2,7 @@ import express from 'express';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runStructured, TASKS } from './gemini.js';
+import { checkRateLimit } from './rateLimit.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -27,21 +28,21 @@ if (!isProd) {
   });
 }
 
-// Minimal in-memory rate limit so a publicly deployed key can't be trivially
-// hammered. Per-process only — fine for a single small instance, not a
-// substitute for real auth/billing controls in a larger production rollout.
-const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
-const RATE_LIMIT_MAX = 60;
-const hits = new Map();
-function rateLimit(req, res, next) {
+// Rate-limits the Gemini proxy so a publicly deployed key can't be trivially
+// hammered. Uses Upstash Redis when UPSTASH_REDIS_REST_URL/TOKEN are set
+// (works across stateless instances too), otherwise an in-memory counter
+// that's fine for this single long-running process. See rateLimit.js.
+async function rateLimit(req, res, next) {
   const ip = req.ip || 'unknown';
-  const now = Date.now();
-  const recent = (hits.get(ip) || []).filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
-  if (recent.length >= RATE_LIMIT_MAX) {
-    return res.status(429).json({ error: 'Too many requests. Please try again in a while.' });
+  try {
+    const { allowed } = await checkRateLimit(ip);
+    if (!allowed) {
+      return res.status(429).json({ error: 'Too many requests. Please try again in a while.' });
+    }
+  } catch (err) {
+    // Fail open: a rate-limiter outage shouldn't take down the whole API.
+    console.error('Rate limit check failed, allowing request:', err.message);
   }
-  recent.push(now);
-  hits.set(ip, recent);
   next();
 }
 

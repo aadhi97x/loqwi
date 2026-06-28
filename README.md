@@ -1,20 +1,19 @@
-# Loqwi — Voice AI Teaching Assistant
+# Loqwi: Voice AI Teaching Assistant
 
-Built for **CDF Round 2 — Technical Assignment, Option A**: a hands-free, Hinglish, voice-first AI co-pilot for a live classroom on a smart board.
+Built for **CDF-NSCIF Freelancing Opp**
+Problem Statement: a hands-free, Hinglish, voice-first AI co-pilot for a live classroom on a smart board.
 
-Loqwi listens for a teacher's spoken (or typed) commands in Hindi/English code-switched speech ("Hinglish"), and handles all four optional requirements from the brief:
+Loqwi listens for a teacher's spoken (or typed) commands in Hindi/English code-switched speech ("Hinglish"), and handles these 2 requirements from the brief:
 
-1. **Live Concept Simplification** — explains a topic in simple Hinglish with a generated on-screen visual (steps, diagram, comparison, or analogy).
-2. **Voice-Triggered Quizzing** — generates and runs a short oral quiz, listens for spoken answers ("A"/"B"/"C"/"D" or Hindi equivalents), gives instant feedback, tracks score.
-3. **Bilingual Dictation & Translation** — live-transcribes spoken/typed passages and translates between Hindi and English on command.
-4. **Hands-Free Activity Guide** — generates a short hands-on classroom activity with timed, voice-narrated steps and an auto-advancing on-screen timer, controllable by voice ("next", "pause", "stop") without touching the screen.
+1. **Live Concept Simplification**: explains a topic in simple Hinglish with a generated on-screen visual (steps, diagram, comparison, or analogy).
+2. **Voice-Triggered Quizzing**: generates and runs a short oral quiz, listens for spoken answers ("A"/"B"/"C"/"D" or Hindi equivalents), gives instant feedback, tracks score.
 
 ## Architecture
 
 ```
 loqwi/
 ├── web/      Vite + React + Tailwind frontend (the smart-board UI)
-└── server/   Node/Express backend — holds the Gemini API key, proxies structured calls
+└── server/   Node/Express backend holds the Gemini API key, proxies structured calls
 ```
 
 ```
@@ -31,28 +30,17 @@ Teacher's voice ──▶ Web Speech API (STT, in-browser) ──▶ React state
                                                   React renders visual + speaks via TTS
 ```
 
-**Why a backend at all, for a "simple web interface"?** The brief suggests Streamlit/Gradio, which run server-side by default and never expose API keys to the browser. A pure static frontend calling Gemini directly from client JS would have to embed the key in shipped code — visible to anyone via DevTools. Loqwi keeps the same security property Streamlit gives you for free: the Gemini key lives only in `server/.env`, read by Node at startup, and the browser only ever talks to our own `/api/assistant` endpoint.
-
 ## Tech stack
 
 | Layer | Choice | Why |
 |---|---|---|
-| STT / TTS | Web Speech API (`SpeechRecognition` / `speechSynthesis`) | Native, free, zero extra latency, works offline-ish in Chrome/Edge — no audio round-trips to a cloud STT/TTS vendor needed for a classroom demo |
+| STT / TTS | Web Speech API (`SpeechRecognition` / `speechSynthesis`) | Native, free, zero extra latency, works offline-ish in Chrome/Edge and no audio round-trips to a cloud STT/TTS vendor needed for a classroom demo |
 | LLM | Google Gemini (`gemini-2.5-flash` by default), structured output via `responseSchema` | Fast + cheap enough for live classroom use; native JSON-schema-constrained output means the UI never parses free-form text out of a prompt |
-| Frontend | React 19 + Vite + Tailwind CSS v4 | Component-based UI, instant HMR during development, ships as static assets |
-| UI components | Hand-built, Tailwind/Radix-style primitives (`Button`, `Dialog`, `Switch`, toasts) in the visual language of shadcn/ui — the same system 21st.dev components are built on — plus `lucide-react` icons and `framer-motion` for motion | Polished, accessible, consistent design without a heavy dependency tree |
+| Frontend | React 19 + TypeScript + Vite + Tailwind CSS v4 | Component-based UI with the response shapes from `server/gemini.js` mirrored in `types.ts`, so a drift between what the backend returns and what the UI expects is a compile error, not a runtime crash; instant HMR during development, ships as static assets |
+| UI components | Hand-built, Tailwind/Radix-style primitives (`Button`, `Dialog`, `Switch`, toasts) in the visual language of shadcn/ui, plus `lucide-react` icons and `framer-motion` for motion | Polished, accessible, consistent design without a heavy dependency tree |
 | Backend | Node.js + Express, zero extra runtime deps besides `express` | Holds the Gemini key server-side; serves the built frontend in production so there's one deployable process |
-
-## Deploying to Vercel
-
-The repo includes `vercel.json` plus `api/assistant.js` and `api/health.js` — Vercel auto-detects anything under `/api` as serverless functions, separate from the always-on `server/` Express app used for local dev or Render/Railway-style hosts.
-
-1. Push this repo to GitHub, then import it in Vercel.
-2. Project Settings → keep **Root Directory** as the repo root (not `web/`) so `/api` is picked up.
-3. Project Settings → **Environment Variables** → add `GEMINI_API_KEY` (and optionally `GEMINI_MODEL`). Do **not** put it in any committed file.
-4. Deploy. Vercel runs the `buildCommand` from `vercel.json` (`cd web && npm install && npm run build`) and serves `web/dist` as static, with `/api/assistant` and `/api/health` as functions.
-
-Note: the simple in-memory rate limiter in `server/server.js` doesn't carry over to Vercel's stateless functions (each invocation/instance has its own memory) — fine for a small classroom demo, but worth knowing if you plan to share the URL widely.
+| Rate limiting | Upstash Redis (sliding window), falls back to in-memory | Works across stateless Vercel function instances, where a per-process counter can't |
+| Testing / quality | Vitest + React Testing Library (frontend), Node's built-in `node:test` (backend), ESLint (flat config, `react-hooks` + `jsx-a11y`) + Prettier, GitHub Actions CI | Catches regressions in the intent router, script segmenter, and view state transitions; enforces consistent style without a heavy toolchain |
 
 ## Local setup
 
@@ -86,24 +74,32 @@ GEMINI_MODEL=gemini-2.5-flash   # optional override
 PORT=3000                       # optional override
 ```
 
-`server/.env` is git-ignored — it never reaches the repo. `server/.env.example` documents the shape without a real key.
+`UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN` are optional (free tier at [console.upstash.com](https://console.upstash.com)). they make the `/api/assistant` rate limiter work across stateless instances (required for it to mean anything on Vercel); without them it falls back to a single-process in-memory counter.
+
+## Testing, linting, CI
+
+```bash
+cd web && npm run typecheck && npm run lint && npm test && npm run build   # tsc, ESLint, Vitest + RTL, production build
+cd server && npm run lint && npm test                                        # ESLint, Node's built-in test runner
+```
+
+Tests cover the parts most likely to silently break: the Hinglish intent router (`lib/intents.js`), the Devanagari/Latin script segmenter that drives bilingual TTS (`lib/speech.js`), the quiz/activity view state transitions, and the grounding-fact lookup + rate limiter on the backend. `.github/workflows/ci.yml` runs all of the above (plus a Prettier format check) on every push and PR.
 
 ## Prompt design
 
 Every AI task (`explain_concept`, `generate_quiz`, `translate_text`, `generate_activity`, `classify_intent`) is a forced-structured Gemini call: `generationConfig.responseSchema` constrains the model to return exactly the JSON shape the UI expects (see `server/gemini.js`), so there's no brittle "parse JSON out of a markdown code block" step.
 
-The shared system prompt establishes persona and tone once ("Loqwi, a calm and encouraging AI co-pilot... Haryana government-school classroom... grade-appropriate... safe for children"), and the **hard rule that matters most for the Hinglish requirement**: spoken text must use **Devanagari script for Hindi words and Latin letters for English/technical terms** — never Romanized Hindi. This isn't just a style preference: the frontend's TTS layer (`web/src/lib/speech.js`) segments the returned text by Unicode script run and routes each run to a matching-language voice (`hi-IN` vs `en-IN`). Romanized Hindi handed to an English voice reads as gibberish, so the prompt constraint and the TTS engineering have to agree.
+The shared system prompt establishes persona and tone once ("Loqwi, a calm and encouraging AI co-pilot... Haryana government-school classroom... grade-appropriate... safe for children"), and the **hard rule that matters most for the Hinglish requirement**: spoken text must use **Devanagari script for Hindi words and Latin letters for English/technical terms** and never Romanized Hindi. This isn't just a style preference: the frontend's TTS layer (`web/src/lib/speech.js`) segments the returned text by Unicode script run and routes each run to a matching-language voice (`hi-IN` vs `en-IN`). Romanized Hindi handed to an English voice reads as gibberish, so the prompt constraint and the TTS engineering have to agree.
 
 Command **routing** (which of the four modes a teacher meant) is handled two ways:
-- A fast local regex/keyword classifier (`web/src/lib/intents.js`) handles the common phrasings ("samjhao X", "quiz on X paanch sawaal", "X translate karo", "activity shuru karo X") with zero network latency — important for a tool meant to feel instant in a live class.
+- A fast local regex/keyword classifier (`web/src/lib/intents.js`) handles the common phrasings ("samjhao X", "quiz on X paanch sawaal", "X translate karo", "activity shuru karo X") with zero network latency.
 - Genuinely ambiguous utterances fall back to a `classify_intent` Gemini call.
 
 ## Localization notes
 
 - Recognition language defaults to `hi-IN`, which in Chrome/Edge handles Hindi/English code-switching noticeably better than `en-IN` for this use case; it's a one-click toggle in the top bar.
 - TTS voice selection is configurable per language (Hindi/English) in Settings, with auto-fallback if a preferred voice isn't installed on the device.
-- A typed-command fallback is always available, both for accessibility and because classroom mic conditions are unpredictable — voice is the primary path, not the only path.
-
+- A typed-command fallback is always available, both for accessibility and because classroom mic conditions are unpredictable.
 ## Hands-free design
 
 - **Push-to-talk** (default): click the mic, speak one command, it auto-stops.
@@ -112,17 +108,9 @@ Command **routing** (which of the four modes a teacher meant) is handled two way
 
 ## Known limitations
 
-- Web Speech API's `SpeechRecognition` is Chromium-only (Chrome/Edge) — Firefox/Safari fall back to the typed-input path, with a banner explaining why.
+- Web Speech API's `SpeechRecognition` is Chromium-only (Chrome/Edge). Firefox/Safari fall back to the typed-input path, with a banner explaining why.
 - Browser TTS voice quality/availability varies by OS; Windows/Edge generally ships usable `hi-IN` and `en-IN` voices out of the box.
-- The in-memory rate limiter in `server/server.js` (60 requests/hour/IP) is a basic abuse guard for a small single-instance deployment, not a substitute for real auth/billing controls at scale.
-- No persistent lesson history/analytics — this is a live-session tool, not a gradebook.
-
-## Deliverables checklist
-
-- [x] Functional prototype covering all four Option A requirements
-- [x] STT/TTS audio pipeline
-- [x] Web interface optimized for smart board (large-text "Smart Board" mode) and mobile (responsive layout)
-- [x] Server-side API key handling (Gemini key never reaches the browser)
-- [ ] Live URL — ready to deploy on Vercel (see "Deploying to Vercel" above) or any Node host that runs `server/` with `GEMINI_API_KEY` set as an environment variable
-- [ ] Public GitHub repo
-- [ ] Video walkthrough (≤3 min)
+- The rate limiter (60 requests/hour/IP, Upstash-backed or in-memory. see "Testing, linting, CI" above) is a basic abuse guard for a small deployment, not a substitute for real auth/billing controls at scale.
+- No persistent lesson history/analytics.
+- The grounding-fact lookup covers common CBSE grade 6-10 topics (see `server/groundingFacts.js`); topics outside that curated list fall back to the model's own knowledge with no fact-check pass.
+- `server/` is plain JS (no TypeScript). small enough that the test suite covers it adequately without the added build step.
