@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { ArrowUp, BookOpen, ListChecks, Languages, Activity } from 'lucide-react';
 import { Switch } from './ui/primitives';
 import MicButton from './MicButton';
@@ -15,6 +15,7 @@ interface ControlBarProps {
   micState: MicState;
   handsFree: boolean;
   micSupported: boolean;
+  prefill?: { text: string; token: number } | null;
   onToggleMic: () => void;
   onToggleHandsFree: () => void;
   onClickMode: (mode: Mode) => void;
@@ -25,12 +26,30 @@ export default function ControlBar({
   micState,
   handsFree,
   micSupported,
+  prefill,
   onToggleMic,
   onToggleHandsFree,
   onClickMode,
   onSubmitTyped,
 }: ControlBarProps) {
   const [typed, setTyped] = useState('');
+  const [seenPrefillToken, setSeenPrefillToken] = useState<number | undefined>(undefined);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // A new prefill (mode button click) should overwrite whatever's typed —
+  // derived during render rather than an effect so it lands in the same
+  // commit instead of causing an extra render pass.
+  if (prefill && prefill.token !== seenPrefillToken) {
+    setSeenPrefillToken(prefill.token);
+    setTyped(prefill.text);
+  }
+
+  useEffect(() => {
+    if (seenPrefillToken === undefined) return;
+    inputRef.current?.focus();
+    const len = inputRef.current?.value.length ?? 0;
+    inputRef.current?.setSelectionRange(len, len);
+  }, [seenPrefillToken]);
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -62,6 +81,7 @@ export default function ControlBar({
           className="flex items-center gap-2 rounded-2xl border border-surface-600 bg-surface-800/80 p-2 pl-4 shadow-lg shadow-black/20"
         >
           <input
+            ref={inputRef}
             value={typed}
             onChange={(e) => setTyped(e.target.value)}
             placeholder='Type a command… e.g. "samjhao photosynthesis"'

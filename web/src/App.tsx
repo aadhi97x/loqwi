@@ -37,6 +37,7 @@ export default function App() {
     theme,
     routeSource,
     confirm,
+    prefill,
     concept,
     quiz,
     translateState,
@@ -113,6 +114,7 @@ export default function App() {
         micState={micState}
         handsFree={handsFree}
         micSupported={listenerSupported}
+        prefill={prefill}
         onToggleMic={actions.toggleMic}
         onToggleHandsFree={actions.toggleHandsFree}
         onClickMode={actions.clickModeButton}

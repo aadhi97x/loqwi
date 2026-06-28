@@ -219,6 +219,7 @@ export function useLoqwi() {
     theme: core.theme,
     routeSource: core.routeSource,
     confirm: core.confirm,
+    prefill: core.prefill,
     concept: conceptApi.concept,
     quiz: quizApi.quiz,
     translateState: translateApi.translateState,

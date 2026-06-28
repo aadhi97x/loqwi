@@ -228,6 +228,85 @@ function pickVoice(
   return voices.find((v) => v.lang.toLowerCase().startsWith(prefix)) || null;
 }
 
+// Devanagari -> Latin transliteration, used only when the device has no
+// installed Hindi voice. Without it, an English voice tries to sonically
+// "sound out" raw Devanagari glyphs (often defaulting to a US English voice
+// regardless of the en-IN we asked for) and produces unintelligible,
+// heavily English-accented noise. Romanizing first lets whatever English
+// voice is available read approximate Hindi phonetics instead, which is far
+// more intelligible even though it's not a substitute for a real Hindi TTS
+// voice (best fixed by installing a Hindi language pack on the OS).
+const DEVANAGARI_CONSONANTS: Record<string, string> = {
+  क: 'k', ख: 'kh', ग: 'g', घ: 'gh', ङ: 'ng',
+  च: 'ch', छ: 'chh', ज: 'j', झ: 'jh', ञ: 'ny',
+  ट: 't', ठ: 'th', ड: 'd', ढ: 'dh', ण: 'n',
+  त: 't', थ: 'th', द: 'd', ध: 'dh', न: 'n',
+  प: 'p', फ: 'f', ब: 'b', भ: 'bh', म: 'm',
+  य: 'y', र: 'r', ल: 'l', व: 'v',
+  श: 'sh', ष: 'sh', स: 's', ह: 'h',
+  क्ष: 'ksh', त्र: 'tr', ज्ञ: 'gy',
+};
+const DEVANAGARI_INDEPENDENT_VOWELS: Record<string, string> = {
+  अ: 'a', आ: 'aa', इ: 'i', ई: 'ee', उ: 'u', ऊ: 'oo',
+  ऋ: 'ri', ए: 'e', ऐ: 'ai', ओ: 'o', औ: 'au',
+};
+const DEVANAGARI_MATRAS: Record<string, string> = {
+  'ा': 'aa', 'ि': 'i', 'ी': 'ee', 'ु': 'u', 'ू': 'oo',
+  'ृ': 'ri', 'े': 'e', 'ै': 'ai', 'ो': 'o', 'ौ': 'au',
+  'ं': 'n', 'ः': 'h', 'ँ': 'n',
+};
+const DEVANAGARI_DIGITS: Record<string, string> = {
+  '०': '0', '१': '1', '२': '2', '३': '3', '४': '4',
+  '५': '5', '६': '6', '७': '7', '८': '8', '९': '9',
+};
+const VIRAMA = '्';
+
+export function devanagariToRoman(text: string): string {
+  let out = '';
+  const chars = Array.from(text);
+  for (let i = 0; i < chars.length; i++) {
+    const ch = chars[i];
+    const twoChar = chars[i] + (chars[i + 1] || '');
+    const threeChar = twoChar + (chars[i + 2] || '');
+    if (DEVANAGARI_CONSONANTS[threeChar]) {
+      out += DEVANAGARI_CONSONANTS[threeChar];
+      i += 2;
+      // a conjunct consonant cluster still needs the inherent/matra vowel
+      // handling below, so fall through rather than continue.
+    } else if (DEVANAGARI_CONSONANTS[ch]) {
+      out += DEVANAGARI_CONSONANTS[ch];
+    } else if (DEVANAGARI_INDEPENDENT_VOWELS[ch]) {
+      out += DEVANAGARI_INDEPENDENT_VOWELS[ch];
+      continue;
+    } else if (DEVANAGARI_DIGITS[ch]) {
+      out += DEVANAGARI_DIGITS[ch];
+      continue;
+    } else if (ch === '।' || ch === '॰') {
+      out += '.';
+      continue;
+    } else if (ch === VIRAMA || DEVANAGARI_MATRAS[ch]) {
+      // handled as part of the consonant lookahead below
+      continue;
+    } else {
+      out += ch;
+      continue;
+    }
+
+    // After a consonant: a following matra overrides the inherent "a",
+    // a virama suppresses it entirely, otherwise the inherent "a" sounds.
+    const next = chars[i + 1];
+    if (next === VIRAMA) {
+      i += 1;
+    } else if (next && DEVANAGARI_MATRAS[next]) {
+      out += DEVANAGARI_MATRAS[next];
+      i += 1;
+    } else {
+      out += 'a';
+    }
+  }
+  return out;
+}
+
 export interface ScriptSegment {
   text: string;
   devanagari: boolean;
@@ -308,6 +387,7 @@ export async function speak(
   const hiVoice = pickVoice(voices, 'hi', voiceNamePrefs.hi);
   const enVoice =
     pickVoice(voices, 'en-in', voiceNamePrefs.en) || pickVoice(voices, 'en', voiceNamePrefs.en);
+  const noHindiVoiceInstalled = !hiVoice;
 
   const mySession = ++activeSession;
   window.speechSynthesis.cancel();
@@ -326,9 +406,11 @@ export async function speak(
         return;
       }
       const seg = segments[i++];
-      const utter = new SpeechSynthesisUtterance(seg.text);
-      utter.lang = seg.devanagari ? 'hi-IN' : 'en-IN';
-      utter.voice = seg.devanagari ? hiVoice : enVoice;
+      const useTransliteration = seg.devanagari && noHindiVoiceInstalled;
+      const speechText = useTransliteration ? devanagariToRoman(seg.text) : seg.text;
+      const utter = new SpeechSynthesisUtterance(speechText);
+      utter.lang = seg.devanagari && !useTransliteration ? 'hi-IN' : 'en-IN';
+      utter.voice = seg.devanagari && !useTransliteration ? hiVoice : enVoice;
       utter.rate = rate;
       utter.pitch = pitch;
       utter.onstart = () => onSegmentStart && onSegmentStart(seg);
@@ -338,6 +420,11 @@ export async function speak(
     };
     speakNext();
   });
+}
+
+export async function hasHindiVoiceInstalled(): Promise<boolean> {
+  const voices = await ensureVoicesLoaded();
+  return voices.some((v) => v.lang.toLowerCase().startsWith('hi'));
 }
 
 export function listVoiceOptions(voices: SpeechSynthesisVoice[]): { name: string; lang: string }[] {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { segmentByScript } from './speech';
+import { segmentByScript, devanagariToRoman } from './speech';
 
 describe('segmentByScript', () => {
   it('splits a Hinglish sentence into Devanagari and Latin runs', () => {
@@ -35,5 +35,26 @@ describe('segmentByScript', () => {
   it('drops segments that are entirely whitespace/punctuation', () => {
     const segments = segmentByScript('   ');
     expect(segments).toHaveLength(0);
+  });
+});
+
+describe('devanagariToRoman', () => {
+  // Used as a fallback only when the device has no Hindi TTS voice, so an
+  // English voice reads approximate phonetics instead of mangling raw
+  // Devanagari glyphs.
+  it('transliterates a simple word with a matra', () => {
+    expect(devanagariToRoman('गर्मी')).toBe('garmee');
+  });
+
+  it('applies the inherent "a" vowel when no matra or virama follows', () => {
+    expect(devanagariToRoman('सूरज')).toBe('sooraja');
+  });
+
+  it('suppresses the inherent vowel on a virama-marked consonant', () => {
+    expect(devanagariToRoman('सूर्य')).toBe('soorya');
+  });
+
+  it('passes through independent vowels, digits and danda punctuation', () => {
+    expect(devanagariToRoman('अ १ ।')).toBe('a 1 .');
   });
 });

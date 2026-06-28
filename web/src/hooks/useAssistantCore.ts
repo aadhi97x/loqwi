@@ -27,6 +27,13 @@ export function modeLabel(mode: Mode | string): string {
   return MODE_LABELS[mode as Mode] || mode;
 }
 
+const MODE_PREFILLS: Partial<Record<Mode, string>> = {
+  concept: 'samjhao ',
+  quiz: 'quiz on ',
+  translate: 'is paragraph ka translate karo: ',
+  activity: 'activity shuru karo ',
+};
+
 export type RouteHandler = (text: string, opts: { explicit: boolean }) => void;
 
 export function useAssistantCore() {
@@ -47,6 +54,7 @@ export function useAssistantCore() {
   );
   const [routeSource, setRouteSource] = useState<RouteSource>(null);
   const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
+  const [prefill, setPrefill] = useState<{ text: string; token: number } | null>(null);
 
   const busyRef = useRef(false);
   const handsFreeRef = useRef(false);
@@ -63,8 +71,22 @@ export function useAssistantCore() {
   }, [mode]);
 
   const setMicState = useCallback((s: MicState) => {
-    busyRef.current = s === 'thinking' || s === 'speaking';
+    const wasBusy = busyRef.current;
+    const isBusy = s === 'thinking' || s === 'speaking';
+    busyRef.current = isBusy;
     setMicStateRaw(s);
+
+    // Hands-free mode must mute the mic while the assistant is thinking or
+    // speaking — otherwise the always-on recognizer picks up the TTS
+    // playback as ongoing "speech" and never produces a clean final result,
+    // leaving the UI stuck listening forever with nothing happening.
+    const listener = listenerRef.current;
+    if (!listener || !handsFreeRef.current) return;
+    if (isBusy && !wasBusy) {
+      listener.stop();
+    } else if (!isBusy && wasBusy) {
+      listener.start();
+    }
   }, []);
 
   const idleMicState = useCallback(
@@ -144,6 +166,17 @@ export function useAssistantCore() {
     listenerRef.current?.setLang(cfg.recognitionLang);
   }, [cfg.recognitionLang]);
 
+  useEffect(() => {
+    speech.hasHindiVoiceInstalled().then((has) => {
+      if (!has) {
+        toast(
+          'No Hindi voice found on this device — Hindi speech will be approximated with an English voice. For accurate pronunciation, install a Hindi text-to-speech voice in your OS language settings.',
+          { type: 'warn', duration: 8000 }
+        );
+      }
+    });
+  }, []);
+
   /** Mode hooks/orchestrator register the routing function here once it's defined. */
   const setRouteHandler = useCallback((fn: RouteHandler) => {
     onFinalRef.current = fn;
@@ -185,7 +218,9 @@ export function useAssistantCore() {
 
   const clickModeButton = useCallback((m: Mode) => {
     pendingModeRef.current = m;
-    toast(`Say or type the topic (${modeLabel(m)})`, { type: 'info' });
+    const template = MODE_PREFILLS[m] || '';
+    setPrefill({ text: template, token: Date.now() });
+    toast(`Add a topic and send (${modeLabel(m)})`, { type: 'info' });
   }, []);
 
   /** Reads and clears the mode a button click is waiting on, in one step —
@@ -252,6 +287,7 @@ export function useAssistantCore() {
     confirm,
     requestConfirm,
     resolveConfirm,
+    prefill,
     consumePendingMode,
     listenerRef,
     setRouteHandler,
